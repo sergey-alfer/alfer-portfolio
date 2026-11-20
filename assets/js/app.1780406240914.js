@@ -78,13 +78,47 @@ window._BUILT_=true;
   playButton.className='alfer-play-reel';
   playButton.textContent='Play background video';
   playButton.hidden=true;
-  playButton.style.cssText='position:fixed;bottom:24px;left:24px;z-index:21;padding:10px 14px;border:1px solid #8a8c8b;border-radius:24px;color:#fff;background:#121719;font:12px Arial,sans-serif;cursor:pointer';
-  const watchLink=document.createElement('a');
+  playButton.style.cssText='padding:10px 14px;border:1px solid #8a8c8b;border-radius:24px;color:#fff;background:#121719;font:12px Arial,sans-serif;cursor:pointer';
+  const watchLink=document.createElement('button');
+  watchLink.type='button';
   watchLink.className='alfer-watch-reel';
   watchLink.textContent='Watch intro video';
   watchLink.hidden=true;
-  watchLink.style.cssText='position:fixed;bottom:24px;right:24px;z-index:21;padding:10px 14px;border:1px solid #8a8c8b;border-radius:24px;color:#fff;background:#121719;font:12px Arial,sans-serif;text-decoration:none';
-  document.body.append(playButton,watchLink);
+  watchLink.style.cssText='padding:10px 14px;border:1px solid #8a8c8b;border-radius:24px;color:#fff;background:#121719;font:12px Arial,sans-serif;cursor:pointer';
+  playButton.style.cssText+=';position:fixed;bottom:24px;left:24px;z-index:21';
+  watchLink.style.cssText+=';position:fixed;bottom:24px;right:24px;z-index:21';
+  const introPlayer=document.createElement('dialog');
+  introPlayer.className='alfer-intro-player';
+  introPlayer.setAttribute('aria-label','Intro video');
+  introPlayer.style.cssText='width:min(920px,calc(100vw - 32px));max-width:none;box-sizing:border-box;padding:12px;border:1px solid #8a8c8b;border-radius:12px;background:#101517;color:#fff';
+  const introPlayerStyle=document.createElement('style');
+  introPlayerStyle.textContent='.alfer-intro-player::backdrop{background:#000b}';
+  document.head.append(introPlayerStyle);
+  const closePlayer=document.createElement('button');
+  closePlayer.type='button';
+  closePlayer.textContent='Close video';
+  closePlayer.style.cssText='display:block;margin:0 0 10px auto;padding:8px 12px;color:#fff;background:#20282a;border:1px solid #8a8c8b;border-radius:18px;cursor:pointer';
+  const playerVideo=document.createElement('video');
+  playerVideo.controls=true;
+  playerVideo.playsInline=true;
+  playerVideo.style.cssText='display:block;width:100%;max-height:72dvh;background:#000';
+  introPlayer.append(closePlayer,playerVideo);
+  closePlayer.addEventListener('click',()=>introPlayer.close());
+  introPlayer.addEventListener('close',()=>{
+    playerVideo.pause();
+    playerVideo.removeAttribute('src');
+    playerVideo.load();
+    watchLink.focus({preventScroll:true});
+  });
+  watchLink.addEventListener('click',()=>{
+    if(introPlayer.open||!reel?.src)return;
+    active=false;
+    reel?.pause();
+    playerVideo.src=reel.src;
+    introPlayer.showModal();
+    playerVideo.play().catch(()=>{});
+  });
+  document.body.append(playButton,watchLink,introPlayer);
   function updateButton(){playButton.hidden=!(introVisible&&(needsGesture||(reducedMotion&&!motionOptIn)));}
   function playReel(force=false){
     if(!active||!reel||playPending||(!force&&needsGesture))return;
@@ -114,6 +148,16 @@ window._BUILT_=true;
     updateButton();
   });
   const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  function retryAfterInteraction(event){
+    if(!event.isTrusted||!introVisible||!active||!needsGesture)return;
+    if(reducedMotion&&!motionOptIn)return;
+    if(navigator.userActivation?.isActive===false)return;
+    if(event.target instanceof Element&&event.target.closest('button,a,input,select,textarea,[role="button"]'))return;
+    playReel(true);
+  }
+  window.addEventListener('pointerup',retryAfterInteraction,true);
+  window.addEventListener('click',retryAfterInteraction,true);
+
   const mouse=new Vector2(.5,.5),restMouse=new Vector2(.5,.5);
   AppState.set('ALFER/themedScenes',entries);
   Render.start(()=>{
@@ -149,10 +193,9 @@ window._BUILT_=true;
     const position=scroll.renderManager.controller.scroll;
     const showIntro=!document.hidden&&position<scroll.views[2].start;
     const watchVisible=showIntro&&((scroll.views[0].scrollProgress||0)>.18||position>=scroll.views[1].start||needsGesture||reducedMotion);
-    if(window.ALFER_STATIC_SITE&&watchVisible&&reel?.src&&watchLink.href!==reel.src)watchLink.href=reel.src;
     watchLink.hidden=!(window.ALFER_STATIC_SITE&&watchVisible&&reel?.src);
     if(introVisible!==showIntro){introVisible=showIntro;updateButton();}
-    const show=(!reducedMotion||motionOptIn)&&!document.hidden&&(showIntro||position>scroll.views[5].start);
+    const show=!introPlayer.open&&(!reducedMotion||motionOptIn)&&!document.hidden&&(showIntro||position>scroll.views[5].start);
     if(show!==active){
       active=show;
       updateButton();
